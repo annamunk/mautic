@@ -2,12 +2,14 @@
 
 namespace Mautic\CampaignBundle\Model;
 
+use Doctrine\DBAL\Exception;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\PersistentCollection;
 use Mautic\CampaignBundle\CampaignEvents;
 use Mautic\CampaignBundle\Entity\Campaign;
 use Mautic\CampaignBundle\Entity\Event;
 use Mautic\CampaignBundle\Entity\Lead as CampaignLead;
+use Mautic\CampaignBundle\Entity\LeadEventLogRepository;
 use Mautic\CampaignBundle\Event as Events;
 use Mautic\CampaignBundle\EventCollector\EventCollector;
 use Mautic\CampaignBundle\Executioner\ContactFinder\Limiter\ContactLimiter;
@@ -19,8 +21,11 @@ use Mautic\CoreBundle\Helper\Chart\LineChart;
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Model\FormModel as CommonFormModel;
+use Mautic\CoreBundle\Model\MapModelInterface;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\CoreBundle\Translation\Translator;
+use Mautic\EmailBundle\Entity\Stat;
+use Mautic\EmailBundle\Entity\StatRepository;
 use Mautic\FormBundle\Entity\Form;
 use Mautic\FormBundle\Model\FormModel;
 use Mautic\LeadBundle\Entity\Lead;
@@ -35,8 +40,10 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
  * @extends CommonFormModel<Campaign>
+ *
+ * @implements MapModelInterface<Campaign>
  */
-class CampaignModel extends CommonFormModel
+class CampaignModel extends CommonFormModel implements MapModelInterface
 {
     /**
      * @var ListModel
@@ -117,7 +124,7 @@ class CampaignModel extends CommonFormModel
     }
 
     /**
-     * @return \Mautic\CampaignBundle\Entity\LeadEventLogRepository
+     * @return LeadEventLogRepository
      */
     public function getCampaignLeadEventLogRepository()
     {
@@ -827,5 +834,28 @@ class CampaignModel extends CommonFormModel
         }
 
         return $ids;
+    }
+
+    /**
+     * @param Campaign $entity
+     *
+     * @return array<int, array<string, int|string>>
+     *
+     * @throws Exception
+     */
+    public function getEmailCountryStats($entity, \DateTime $dateFrom, \DateTime $dateTo): array
+    {
+        $eventsEmailsSend     = $entity->getEmailSendEvents();
+        $eventsIds            = $eventsEmailsSend->getKeys();
+
+        if (empty($eventsIds)) {
+            return [];
+        }
+
+        /** @var StatRepository $statRepo */
+        $statRepo = $this->em->getRepository(Stat::class);
+        $query    = new ChartQuery($this->em->getConnection(), $dateFrom, $dateTo);
+
+        return $statRepo->getStatsSummaryByCountry($query, $eventsIds, 'campaign');
     }
 }
